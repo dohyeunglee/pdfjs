@@ -4,9 +4,12 @@ import {defer} from 'rxjs/observable/defer';
 import {fromPromise} from 'rxjs/observable/fromPromise';
 import {of} from 'rxjs/observable/of';
 import {forkJoin} from 'rxjs/observable/forkJoin';
+import {merge} from 'rxjs/observable/merge';
+import {range} from 'rxjs/observable/range';
+import {zip} from 'rxjs/observable/zip';
 import {tap, map, mergeMap, pluck} from 'rxjs/operators';
 
-import {times, add} from 'ramda';
+import {times, add, flatten} from 'ramda';
 
 interface PDFDocumentProxy {
   fingerprint: string;
@@ -65,26 +68,51 @@ export class PdfService {
     return defer(() => document.getPage(pageNum));
   }
 
-  getThumbnailUrl(page: any): Observable<string[]> {
-    return defer(() => page.getOperatorList()).pipe(
-      mergeMap(({fnArray, argsArray}) => {
-        return this.getPdfJs().pipe(
-          pluck('OPS'),
-          map((OPS: any) => {
-            const result = [];
-            for (let i = 0 ; i < fnArray.length ; i++) {
-              if (fnArray[i] === OPS.paintJpegXObject) {
-                result.push(page.objs.get(argsArray[i][0]).src);
-              }
-            }
-            return result.length === 1 ? result[0] : result;
-          }),
-        );
-      })
+  getThumbnailUrl(page: any): Observable<string> {
+    const viewport = page.getViewport(0.5);
+    const canvas = document.createElement('canvas');
+    canvas.height = viewport.height;
+    canvas.width = viewport.width;
+    const context = canvas.getContext('2d');
+    const renderContext = {
+      canvasContext: context,
+      viewport
+    };
+    return defer(() => page.render(renderContext)).pipe(
+      map(() => canvas.toDataURL()),
+      tap(() => canvas.remove())
     )
   }
 
-  getAllThumbnailUrl(url: string): Observable<(string | string[])[]> {
+  getSvg(page: any): Observable<any> {
+    return defer(() => page.getOperatorList()).pipe(
+      mergeMap(opList => {
+        return this.getPdfJs().pipe(
+          mergeMap(pdfjs => {
+            const svgGfx = new pdfjs.SVGGraphics(page.commonObjs, page.objs);
+            return svgGfx.getSVG(opList, page.getViewport(1));
+          })
+        );
+      })
+    );
+  }
+
+  getAllSvg(url: string): Observable<any> {
+    return this.getDocument(url).pipe(
+      mergeMap(pdfDoc => {
+        const { numPages } = pdfDoc;
+        const tasks = times(add(1), numPages).map(pageNum => {
+          return this.getPageFromDocument(pdfDoc, pageNum).pipe(
+            mergeMap(page => this.getSvg(page))
+          );
+        });
+        return forkJoin(...tasks);
+      })
+    );
+
+  }
+
+  getAllThumbnailUrl(url: string): Observable<any> {
     return this.getDocument(url).pipe(
       mergeMap(pdfDoc => {
         const { numPages } = pdfDoc;
@@ -93,7 +121,9 @@ export class PdfService {
             mergeMap(page => this.getThumbnailUrl(page))
           );
         });
-        return forkJoin(...tasks);
+        return zip(range(1, numPages), merge(...tasks)).pipe(
+          map(([num, img]) => [num / numPages, img])
+        );
       })
     );
   }

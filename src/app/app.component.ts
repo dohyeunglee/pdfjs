@@ -1,5 +1,6 @@
 import {Component, ViewChild, ElementRef} from '@angular/core';
 import {PdfService} from './pdf.service';
+import {Subscription} from 'rxjs/Subscription';
 
 @Component({
   selector: 'app-root',
@@ -10,21 +11,23 @@ import {PdfService} from './pdf.service';
     <button *ngIf="pdfjs" (click)="showPdf()">PDF</button>
     <button (click)="onPrevPage()">Prev</button>
     <button (click)="onNextPage()">Next</button>
+    <button *ngIf="progressing" (click)="onStop()">stop</button>
     <input type="file" #file (change)="onChange($event)"/>
     <span>page num: {{ pageNum }}</span>
     <span>page count: {{ pageCount }}</span>
-    <ng-container *ngFor="let src of test">
-      <img *ngIf="src.length !== 0" [src]="src | sanitize"/>
-    </ng-container>
+    <progressbar [value]="(percent * 100)"></progressbar>
+    <img *ngFor="let image of test" [src]="image"/>
     <canvas #canvas></canvas>
    `,
   styleUrls: ['./app.component.css']
 })
 export class AppComponent {
   @ViewChild('canvas') canvas: ElementRef;
-  heroes = [{name: 1}, {name:2}, {name:3}, {name:4}, {name:5}];
   pdfDoc = null;
+  job: Subscription;
   pdfjs: any;
+  progressing = false;
+  percent = 0;
   pageNum = 1;
   pageCount: number;
   pageRendering = true;
@@ -49,7 +52,17 @@ export class AppComponent {
     const file = event.target.files[0];
     console.log('event: ', file);
     const url = URL.createObjectURL(file);
-    this.pdfService.getAllThumbnailUrl(url).subscribe(list => this.test = list);
+    this.percent = 0;
+    this.test = [];
+    this.job = this.pdfService.getAllThumbnailUrl(url).subscribe(([percent, img])=> {
+      this.progressing = true;
+      this.test = [...this.test, img];
+      this.percent = percent;
+      if (percent === 1) {
+        this.progressing = false;
+      }
+      console.log('percent: ', percent);
+    });
     // this.pdfjs.getDocument(url).then(pdf => {
     //   URL.revokeObjectURL(url);
     //   console.log('pdf: ', pdf);
@@ -57,6 +70,12 @@ export class AppComponent {
     //   this.pageCount = pdf.numPages;
     //   this.renderPage(this.pageNum);
     // })
+  }
+
+  onStop() {
+    if (this.job) {
+      this.job.unsubscribe();
+    }
   }
 
   renderPage(num: number) {
