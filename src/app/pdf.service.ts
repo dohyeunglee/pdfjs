@@ -4,37 +4,12 @@ import {defer} from 'rxjs/observable/defer';
 import {fromPromise} from 'rxjs/observable/fromPromise';
 import {of} from 'rxjs/observable/of';
 import {forkJoin} from 'rxjs/observable/forkJoin';
-import {merge} from 'rxjs/observable/merge';
+import {concat} from 'rxjs/observable/concat';
 import {range} from 'rxjs/observable/range';
 import {zip} from 'rxjs/observable/zip';
-import {tap, map, mergeMap, pluck} from 'rxjs/operators';
+import {tap, map, mergeMap} from 'rxjs/operators';
 
 import {times, add, flatten} from 'ramda';
-
-interface PDFDocumentProxy {
-  fingerprint: string;
-  numPages: number;
-}
-
-interface PDFPageProxy {
-  pageIndex: number;
-  pageInfo: {
-    ref: {
-      num: number;
-      gen: number;
-    };
-    rotate: number;
-    userUnit: number;
-    view: number[];
-  };
-  objs: any;
-}
-
-interface OperatorList {
-  argsArray: any[];
-  fnArray: number[];
-  lastChunk: boolean;
-}
 
 @Injectable()
 export class PdfService {
@@ -42,12 +17,12 @@ export class PdfService {
 
   importPdfJs(): Observable<any> {
     return defer(() => fromPromise(import('pdfjs-dist')).pipe(
-      tap(pdfjs => window['pdfjs'] = pdfjs)
+      tap(pdfjs => window['__pdfjs__'] = pdfjs)
     ));
   }
 
   getPdfJs(): Observable<any> {
-    const pdfjs = window['pdfjs'];
+    const pdfjs = window['__pdfjs__'];
     return pdfjs ? of(pdfjs) : this.importPdfJs();
   }
 
@@ -58,18 +33,18 @@ export class PdfService {
     );
   }
 
-  getPageFromUrl(url: string, pageNumber: number): Observable<PDFPageProxy> {
+  getPageFromUrl(url: string, pageNumber: number): Observable<any> {
     return this.getDocument(url).pipe(
       mergeMap(pdfDoc => pdfDoc.getPage(pageNumber))
     );
   }
 
-  getPageFromDocument(document: any, pageNum: number): Observable<PDFPageProxy> {
+  getPageFromDocument(document: any, pageNum: number): Observable<any> {
     return defer(() => document.getPage(pageNum));
   }
 
-  getThumbnailUrl(page: any): Observable<string> {
-    const viewport = page.getViewport(0.5);
+  getThumbnailUrl(page: any, scale: number): Observable<string> {
+    const viewport = page.getViewport(scale);
     const canvas = document.createElement('canvas');
     canvas.height = viewport.height;
     canvas.width = viewport.width;
@@ -78,14 +53,14 @@ export class PdfService {
       canvasContext: context,
       viewport
     };
-    return defer(() => page.render(renderContext)).pipe(
+    return defer(() => fromPromise(page.render(renderContext)).pipe(
       map(() => canvas.toDataURL()),
       tap(() => canvas.remove())
-    )
+    ));
   }
 
   getSvg(page: any): Observable<any> {
-    return defer(() => page.getOperatorList()).pipe(
+    return defer(() => page.getOperatorList().pipe(
       mergeMap(opList => {
         return this.getPdfJs().pipe(
           mergeMap(pdfjs => {
@@ -94,7 +69,7 @@ export class PdfService {
           })
         );
       })
-    );
+    ));
   }
 
   getAllSvg(url: string): Observable<any> {
@@ -112,16 +87,16 @@ export class PdfService {
 
   }
 
-  getAllThumbnailUrl(url: string): Observable<any> {
+  getAllThumbnailUrl(url: string, scale: number): Observable<any> {
     return this.getDocument(url).pipe(
       mergeMap(pdfDoc => {
         const { numPages } = pdfDoc;
         const tasks = times(add(1), numPages).map(pageNum => {
           return this.getPageFromDocument(pdfDoc, pageNum).pipe(
-            mergeMap(page => this.getThumbnailUrl(page))
+            mergeMap(page => this.getThumbnailUrl(page, scale))
           );
         });
-        return zip(range(1, numPages), merge(...tasks)).pipe(
+        return zip(range(1, numPages), concat(...tasks)).pipe(
           map(([num, img]) => [num / numPages, img])
         );
       })
