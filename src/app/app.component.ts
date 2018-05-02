@@ -45,7 +45,7 @@ export class AppComponent {
     const url = URL.createObjectURL(file);
     this.initialize();
     this.stopped = false;
-    this.job = this.pdfService.getAllThumbnailUrl(url, 0.2).subscribe({
+    this.job = this.pdfService.convert(url, 1).subscribe({
       next: ([percent, thumbnail]) => {
         this.percent = Math.trunc(percent * 100);
         this.temp.push(thumbnail);
