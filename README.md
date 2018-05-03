@@ -36,7 +36,7 @@ Specific page numbers to convert. If not given, all pages are converted
 
 ###### `option`
 option for quality of `Canvas.toDataURL()`. Default value is 
-```
+```typescript
 {
   type: 'image/png',
   encodeOptions: 0.92
