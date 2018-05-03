@@ -32,7 +32,13 @@ string from `URL.createObjectURL(File)`
 scale of thumbnail
 
 ###### `page`
-Specific page numbers to convert 
+Specific page numbers to convert. If not given, all pages are converted
 
 ###### `option`
-option for quality of `Canvas.toDataURL()`
+option for quality of `Canvas.toDataURL()`. Default value is 
+```
+{
+  type: 'image/png',
+  encodeOptions: 0.92
+}
+```
