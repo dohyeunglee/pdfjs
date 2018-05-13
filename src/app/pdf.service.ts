@@ -50,8 +50,7 @@ export class PdfService {
 
   private getDocument(url: string): Observable<PDFDocumentProxy> {
     return this.getPdfJs().pipe(
-      mergeMap((pdfjs: PDF) => pdfjs.getDocument(url)),
-      tap(() => URL.revokeObjectURL(url))
+      mergeMap((pdfjs: PDF) => pdfjs.getDocument(url))
     );
   }
 
