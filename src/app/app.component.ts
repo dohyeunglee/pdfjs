@@ -1,6 +1,6 @@
-import {Component} from '@angular/core';
-import {PdfService} from './pdf.service';
-import {Subscription} from 'rxjs/Subscription';
+import { Component } from '@angular/core';
+import { PdfService } from './pdf.service';
+import { Subscription } from 'rxjs/Subscription';
 
 @Component({
   selector: 'app-root',
@@ -12,7 +12,7 @@ import {Subscription} from 'rxjs/Subscription';
     <input type="file" #file (change)="onChange($event)"/>
     <span *ngIf="stopped">Stopped!</span>
     <span>percentage: {{ percent }}%</span>
-    <img *ngFor="let image of thumbnails" style="border: 1px solid" [src]="image"/>
+    <img *ngFor="let image of thumbnails" style="border: 1px solid" [src]="image | sanitize"/>
    `,
   styleUrls: []
 })
@@ -24,10 +24,7 @@ export class AppComponent {
   temp = [];
   stopped = false;
 
-  constructor(
-    private pdfService: PdfService
-  ) {
-  }
+  constructor(private pdfService: PdfService) {}
 
   get pdfjs() {
     return window['pdfjs'];
@@ -65,5 +62,4 @@ export class AppComponent {
       this.stopped = true;
     }
   }
-
 }

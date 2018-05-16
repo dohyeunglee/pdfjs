@@ -1,18 +1,19 @@
-import {Injectable} from '@angular/core';
+import { Injectable } from '@angular/core';
 
-import {Observable} from 'rxjs/Observable';
+import { Observable } from 'rxjs/Observable';
 
-import {defer} from 'rxjs/observable/defer';
-import {fromPromise} from 'rxjs/observable/fromPromise';
-import {of} from 'rxjs/observable/of';
-import {forkJoin} from 'rxjs/observable/forkJoin';
-import {concat} from 'rxjs/observable/concat';
-import {range} from 'rxjs/observable/range';
-import {zip} from 'rxjs/observable/zip';
+import { defer } from 'rxjs/observable/defer';
+import { fromPromise } from 'rxjs/observable/fromPromise';
+import { of } from 'rxjs/observable/of';
+import { forkJoin } from 'rxjs/observable/forkJoin';
+import { concat } from 'rxjs/observable/concat';
+import { range } from 'rxjs/observable/range';
+import { zip } from 'rxjs/observable/zip';
+import { bindCallback } from 'rxjs/observable/bindCallback';
 
-import {tap, map, mergeMap} from 'rxjs/operators';
+import { tap, map, mergeMap } from 'rxjs/operators';
 
-import {times, add, flatten} from 'ramda';
+import { times, add, flatten } from 'ramda';
 
 type PDF = any;
 type PDFPageProxy = any;
@@ -20,9 +21,9 @@ type PDFDocumentProxy = any;
 type ImageURL = string;
 type Progress = number;
 type ConvertResult = [Progress, ImageURL];
-type CanvasToDataURLOption = {
-  type: string;
-  encoderOptions: number;
+type CanvasToBlobOption = {
+  mimeType: string;
+  qualityArgument: number;
 };
 
 @Injectable()
@@ -30,17 +31,41 @@ export class PdfService {
   constructor() {}
 
   private importPdfJs(): Observable<PDF> {
-    return defer(() => fromPromise(import('pdfjs-dist')).pipe(
-      tap(pdfjs => {
-        /*
+    return defer(() =>
+      fromPromise(import('pdfjs-dist')).pipe(
+        tap(pdfjs => {
+          /*
          * 처음에는 workerSrc를 명시안해도 에러가 발생안했는데
          * 어느 순간부터 명시 안할 시 에러 발생
          * 아무 문자열이나 대입해도 작동한다. 이유를 발견하기 전까지는 공백으로 둔다
          */
-        pdfjs.GlobalWorkerOptions.workerSrc = ' ';
-        window['__pdfjs__'] = pdfjs;
-      })
-    ));
+          pdfjs.GlobalWorkerOptions.workerSrc = ' ';
+          window['__pdfjs__'] = pdfjs;
+        })
+      )
+    );
+  }
+
+  private _toBlob(
+    canvas: HTMLCanvasElement,
+    mimeType: string,
+    qualityArgument: number,
+    callback: (blob: Blob) => void
+  ) {
+    return canvas.toBlob(callback, mimeType, qualityArgument);
+  }
+
+  private _canvasToBlob$(
+    canvas: HTMLCanvasElement,
+    mimeType: string,
+    qualityArgument: number
+  ): Observable<Blob> {
+    return bindCallback(this._toBlob).call(
+      this,
+      canvas,
+      mimeType,
+      qualityArgument
+    );
   }
 
   private getPdfJs(): Observable<PDF> {
@@ -50,8 +75,7 @@ export class PdfService {
 
   private getDocument(url: string): Observable<PDFDocumentProxy> {
     return this.getPdfJs().pipe(
-      mergeMap((pdfjs: PDF) => pdfjs.getDocument(url)),
-      tap(() => URL.revokeObjectURL(url))
+      mergeMap((pdfjs: PDF) => pdfjs.getDocument(url))
     );
   }
 
@@ -61,11 +85,18 @@ export class PdfService {
   //   );
   // }
 
-  private getPageFromDocument(document: PDFDocumentProxy, pageNum: number): Observable<PDFPageProxy> {
+  private getPageFromDocument(
+    document: PDFDocumentProxy,
+    pageNum: number
+  ): Observable<PDFPageProxy> {
     return defer(() => document.getPage(pageNum));
   }
 
-  private getThumbnailUrl(page: PDFPageProxy, scale: number, option: CanvasToDataURLOption = {type: null, encoderOptions: null}): Observable<string> {
+  private getThumbnailUrl(
+    page: PDFPageProxy,
+    scale: number,
+    option: CanvasToBlobOption = { mimeType: null, qualityArgument: null }
+  ): Observable<string> {
     const viewport = page.getViewport(scale);
     const canvas = document.createElement('canvas');
     canvas.height = viewport.height;
@@ -75,10 +106,15 @@ export class PdfService {
       canvasContext: context,
       viewport
     };
-    return defer(() => fromPromise(page.render(renderContext)).pipe(
-      map(() => canvas.toDataURL(option.type, option.encoderOptions)),
-      tap(() => canvas.remove())
-    ));
+    return defer(() =>
+      fromPromise(page.render(renderContext)).pipe(
+        mergeMap(() =>
+          this._canvasToBlob$(canvas, option.mimeType, option.qualityArgument)
+        ),
+        map((blob: Blob) => URL.createObjectURL(blob)),
+        tap(() => canvas.remove())
+      )
+    );
   }
 
   // getSvg(page: any): Observable<any> {
@@ -108,7 +144,12 @@ export class PdfService {
   //   );
   // }
 
-  convert(url: string, scale: number, pages?: number[], option?: CanvasToDataURLOption): Observable<ConvertResult> {
+  convert(
+    url: string,
+    scale: number,
+    pages?: number[],
+    option?: CanvasToBlobOption
+  ): Observable<ConvertResult> {
     return this.getDocument(url).pipe(
       mergeMap((pdfDoc: PDFDocumentProxy) => {
         let targetPages: number[];
@@ -119,11 +160,15 @@ export class PdfService {
           if (pages.every(pageNum => pageNum <= numPages && pageNum >= 1)) {
             targetPages = pages;
           } else {
-            console.error(`Maximum page number is ${numPages} and minimum is 1`);
+            console.error(
+              `Maximum page number is ${numPages} and minimum is 1`
+            );
             return of([0, null]) as Observable<ConvertResult>;
           }
         } else {
-          console.warn('Nothing to convert or pages parameter is wrongly given');
+          console.warn(
+            'Nothing to convert or pages parameter is wrongly given'
+          );
           return of([1, null]) as Observable<ConvertResult>;
         }
         const tasks = targetPages.map(pageNum => {
@@ -137,8 +182,4 @@ export class PdfService {
       })
     );
   }
-
-
-
-
 }
