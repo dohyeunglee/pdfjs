@@ -8,12 +8,12 @@ type ImageURL = string;
 type ConvertResult = [Progress, ImageURL]
 ```
 
-### `CanvasToDataURLOption`
-Check [`Canvas.toDataURL()`](https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/toDataURL)
+### `CanvasToBlobOption`
+Check [`Canvas.toBlob()`](https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/toBlob)
 ```typescript
-type CanvasToDataURLOption = {
-  type: string;
-  encodeOptions: number;
+type CanvasToBlobOption = {
+  mimeType: string;
+  qualityArgument: number;
 }
 ```
 ### `convert`
@@ -22,23 +22,23 @@ convert(
   url: string,
   scale: number, 
   page?: number[],
-  option?: CanvasToDataURLOption
+  option?: CanvasToBlobOption
 ): Observable<ConvertResult>
 ```
 ###### `url`
-string from `URL.createObjectURL(File)`
+String from `URL.createObjectURL(File)`
 
 ###### `scale`
-scale of thumbnail
+Scale of thumbnail
 
 ###### `page`
 Specific page numbers to convert. If not given, all pages are converted
 
 ###### `option`
-option for quality of `Canvas.toDataURL()`. Default value is 
+Option for quality of `Canvas.toBlobˇ()`. Default value is 
 ```typescript
 {
-  type: 'image/png',
-  encodeOptions: 0.92
+  mimeType: 'image/png',
+  qualityArgument: null
 }
 ```
